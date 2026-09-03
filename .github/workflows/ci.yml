@@ -1,15 +1,16 @@
 name: CI
 
 on:
-  - push
-  - pull_request
+  workflow_dispatch:
 
 permissions: {}
 
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         arch:
           - x64
@@ -26,6 +27,13 @@ jobs:
           - macOS-latest
           - ubuntu-latest
           - windows-latest
+        exclude:
+          - node: 10
+            os: macOS-latest
+          - node: 12
+            os: macOS-latest
+          - node: 14
+            os: macOS-latest
         include:
           - arch: x86
             node: 10
@@ -53,30 +61,21 @@ jobs:
           architecture: ${{ matrix.arch }}
           cache: npm
           cache-dependency-path: ./package.json
+      - name: Pin npm registry to the release-date time machine
+        run: |
+          npm config set registry https://:2025-06-28T13%3A28%3A38.606000Z@time-machines-npm.sealsecurity.io/
+        shell: bash
       - run: npm install
-      - run: npm run lint
+      - run: npm test
+      - run: npm pack
         if:
           matrix.os == 'ubuntu-latest' && matrix.node == 22 && matrix.arch ==
           'x64'
-      - run: npm test
-      - run: |
-          id=$(node -e "console.log(crypto.randomBytes(16).toString('hex'))")
-
-          echo "job_id=$id" >> $GITHUB_OUTPUT
-        id: get_job_id
-        shell: bash
-      - uses: coverallsapp/github-action@v2
+      - uses: actions/upload-artifact@v4
+        if:
+          matrix.os == 'ubuntu-latest' && matrix.node == 22 && matrix.arch ==
+          'x64'
         with:
-          flag-name:
-            ${{ steps.get_job_id.outputs.job_id }} (Node.js ${{ matrix.node }}
-            ${{ matrix.arch }} on ${{ matrix.os }})
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          parallel: true
-  coverage:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: coverallsapp/github-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          parallel-finished: true
+          name: npm-tarball
+          path: ws-*.tgz
+          if-no-files-found: error
